@@ -1,0 +1,17 @@
+FOX-Player
+Copyright (C) 2026 pk187
+
+Dieses Programm ist freie Software unter der GNU General Public License v3.0 (siehe LICENSE).
+Quellcode: https://github.com/zillazero/foxplayer
+
+Verwendete bzw. eingeflossene Arbeiten Dritter:
+- M3UAndroid (https://github.com/oxyroid/M3UAndroid), Copyright oxyroid und Mitwirkende, GPL-3.0.
+  Der XMLTV-Pull-Parser-Ansatz (EpgParserImpl) und die Regeln fuer M3U-Attribute
+  (tvg-id/tvg-logo/group-title/#EXTGRP/#EXTVLCOPT) sowie die Xtream-API-Felder sind daran angelehnt.
+  Der Parser-Code selbst wurde fuer den FOX-Player neu geschrieben.
+- AndroidX Media3 / ExoPlayer, Room, Paging, Compose (Apache-2.0).
+- Jellyfin media3-ffmpeg-decoder (https://github.com/jellyfin/jellyfin-androidx-media), FFmpeg (LGPL-2.1+/GPL).
+- OkHttp, Coil (Apache-2.0).
+
+Der FOX-Player enthaelt keine Sender, Playlists oder Zugangsdaten. Er steht in keiner
+Verbindung zu TiviMate oder dessen Entwicklern.
