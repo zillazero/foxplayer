@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Gleiche Permission in allen FOX-Apps; nur Apps mit demselben Signaturschlüssel erhalten sie. -->
+    <permission
+        android:name="site.pk187.permission.SSO"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="site.pk187.permission.SSO" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 11+: FOX Store sichtbar machen -->
+    <queries>
+        <package android:name="site.pk187.foxstore" />
+        <provider android:authorities="site.pk187.foxstore.sso" />
+    </queries>
+</manifest>
