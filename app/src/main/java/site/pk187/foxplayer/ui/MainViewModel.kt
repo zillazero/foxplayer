@@ -31,6 +31,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** UI-Bildrate (JankStats) fuer das Statistik-Overlay. */
     val uiFps = MutableStateFlow(0f)
     val uiJankPct = MutableStateFlow(0f)
+    val account = AccountSync(app)
+    /** Live-Link aus dem FOX Store, der (noch) keinem Kanal zugeordnet werden konnte -> im Browser anbieten. */
+    val pendingWebLink = MutableStateFlow<String?>(null)
 
     val theme = prefs.theme.stateIn(viewModelScope, SharingStarted.Eagerly, "foxhole")
     val playlists = dao.playlists().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -72,6 +75,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (last != 0L) dao.channel(last)?.let { play(it) }
         }
         attach(player)
+        if (account.loggedIn.value) pullAccount()
         viewModelScope.launch {
             perf.map { it.playerKey() }.distinctUntilChanged().drop(1).collect { rebuildPlayer() }
         }
@@ -97,10 +101,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         playing.value?.let { play(it) }
     }
 
-    fun savePerf(s: PerfSettings) = viewModelScope.launch { perfStore.save(s) }
+    fun savePerf(s: PerfSettings) = viewModelScope.launch { perfStore.save(s); account.push(theme.value, s) }
+
+    /** Einstellungen vom FOX-Konto uebernehmen (ohne Rueckschreiben). */
+    fun pullAccount() = viewModelScope.launch {
+        val r = account.pull(perf.value) ?: return@launch
+        r.first?.let { prefs.setTheme(themeFor(it).key) }
+        r.second?.let { perfStore.save(it) }
+    }
+
+    fun signInViaStore() = viewModelScope.launch {
+        if (account.signInViaStore() is site.pk187.sso.SsoResult.Success) syncAfterLogin()
+    }
+    fun signIn(u: String, p: String) = viewModelScope.launch { account.signIn(u, p); if (account.loggedIn.value) syncAfterLogin() }
+    fun signOut(all: Boolean) = viewModelScope.launch { account.signOut(all) }
+    private suspend fun syncAfterLogin() {
+        val r = account.pull(perf.value)
+        if (r == null) account.push(theme.value, perf.value) // Server leer -> lokalen Stand hochladen
+        else { r.first?.let { prefs.setTheme(themeFor(it).key) }; r.second?.let { perfStore.save(it) } }
+    }
+
+    /** Deep-Link "Live-TV" aus dem FOX Store (https://watch.pk187.site/... oder foxplayer://live/<id>). */
+    fun handleDeepLink(uri: android.net.Uri) = viewModelScope.launch {
+        val id = Regex("[0-9a-fA-F]{32}").find(uri.toString())?.value?.lowercase()
+        val ch = id?.let { dao.findByKey(it) }
+        if (ch != null) { play(ch); fullscreen.value = true; return@launch }
+        if (uri.scheme == "https") pendingWebLink.value = uri.toString()
+        status.value = "Live-TV-Link aus dem FOX Store empfangen – kein passender Kanal in deinen Playlists."
+    }
 
     fun selectPlaylist(id: Long) = viewModelScope.launch { prefs.setPlaylist(id); group.value = GROUP_ALL; epgCache.clear() }
-    fun setTheme(k: String) = viewModelScope.launch { prefs.setTheme(k) }
+    fun setTheme(k: String) = viewModelScope.launch { prefs.setTheme(k); account.push(k, perf.value) }
 
     fun play(ch: Channel, url: String? = null) {
         lastZapMs.value = null

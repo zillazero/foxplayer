@@ -32,6 +32,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        intent?.data?.let { vm.handleDeepLink(it) }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContent {
             val t by vm.theme.collectAsState()
@@ -55,6 +56,11 @@ class MainActivity : ComponentActivity() {
                 (if (s.frameRateMatch == "immer" && fs) st.frameRate else 0f) to st.resolution
             }.distinctUntilChanged().collect { (fps, res) -> applyDisplayMode(fps, res) }
         }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        intent.data?.let { vm.handleDeepLink(it) }
     }
 
     private var appliedMode = -1

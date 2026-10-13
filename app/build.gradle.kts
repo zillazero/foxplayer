@@ -16,8 +16,8 @@ android {
         applicationId = "site.pk187.foxplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.3.0"
         // API-Schluessel nur aus lokaler Datei (nicht im Repo). Fehlen sie, blendet die App die Funktion aus.
         val keys = Properties().apply {
             val f = file(System.getenv("FOX_API_KEYS") ?: "/workspace/fox-apps/foxplayer-keys.properties")
@@ -65,6 +65,8 @@ ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 dependencies {
     val media3 = "1.9.0"
     val room = "2.8.4"
+    implementation(project(":fox-sso-client"))
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     implementation(platform("androidx.compose:compose-bom:2026.02.00"))
     implementation("androidx.compose.foundation:foundation")

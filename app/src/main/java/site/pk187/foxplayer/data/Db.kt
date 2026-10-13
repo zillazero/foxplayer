@@ -85,6 +85,7 @@ interface FoxDao {
     @Query("SELECT * FROM channel WHERE playlistId = :pid AND (:group IS NULL OR groupName = :group) AND (:fav = 0 OR favorite = 1) AND sort < :sort ORDER BY sort DESC LIMIT 1")
     suspend fun prev(pid: Long, group: String?, fav: Boolean, sort: Int): Channel?
     @Query("SELECT * FROM channel WHERE id = :id") suspend fun channel(id: Long): Channel?
+    @Query("SELECT * FROM channel WHERE tvgId = :key OR url LIKE '%' || :key || '%' LIMIT 1") suspend fun findByKey(key: String): Channel?
 
     @Query("UPDATE channel SET favorite = NOT favorite WHERE id = :id") suspend fun toggleFavorite(id: Long)
 

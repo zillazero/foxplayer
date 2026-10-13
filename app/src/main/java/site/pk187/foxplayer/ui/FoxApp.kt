@@ -188,6 +188,10 @@ private fun InfoPanel(vm: MainViewModel, modifier: Modifier, onSettings: () -> U
             }
         }
         Spacer(Modifier.weight(1f, fill = !compact))
+        val web by vm.pendingWebLink.collectAsState()
+        val uriH = androidx.compose.ui.platform.LocalUriHandler.current
+        web?.let { u -> Text("Im Browser öffnen (watch.pk187.site)", color = t.accent, fontSize = 13.sp,
+            modifier = Modifier.foxFocus(onClick = { runCatching { uriH.openUri(u) }; vm.pendingWebLink.value = null }).padding(8.dp, 4.dp)) }
         val line = listOfNotNull(status, zap?.let { "Umschaltzeit: $it ms" }).joinToString("  ·  ")
         if (line.isNotEmpty()) Text(line, color = t.muted, fontSize = 12.sp, maxLines = 2)
     }

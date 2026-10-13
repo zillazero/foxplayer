@@ -46,6 +46,8 @@ fun SettingsScreen(vm: MainViewModel, onBack: (() -> Unit)?) {
         )
         status?.let { Text(it + if (busy) " …" else "", color = t.accent2) }
 
+        AccountSection(vm)
+
         Section("Playlists") {
             playlists.forEach { p ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -173,5 +175,39 @@ private fun Toggle(label: String, value: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().foxFocus(onClick = { onChange(!value) }).padding(10.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, color = t.text, modifier = Modifier.weight(1f))
         Text(if (value) "AN" else "AUS", color = if (value) t.accent else t.muted, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun AccountSection(vm: MainViewModel) {
+    val t = LocalFox.current
+    val logged by vm.account.loggedIn.collectAsState()
+    val msg by vm.account.message.collectAsState()
+    val links by vm.account.links.collectAsState()
+    Section("FOX-Konto") {
+        msg?.let { Text(it, color = t.accent2, fontSize = 13.sp) }
+        if (logged) {
+            Text("Angemeldet. Design und Player-Einstellungen werden mit deinem FOX-Konto abgeglichen.", color = t.text)
+            links.forEach { l ->
+                Text("${l.service.replaceFirstChar { it.uppercase() }}: " + if (l.connected) "verbunden${l.accountName?.let { " ($it)" } ?: ""}" else "nicht verbunden", color = t.muted, fontSize = 13.sp)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                Text("↻ Jetzt abgleichen", color = t.text, modifier = Modifier.foxFocus(onClick = { vm.pullAccount() }).padding(10.dp, 6.dp))
+                Text("Abmelden", color = t.text, modifier = Modifier.foxFocus(onClick = { vm.signOut(false) }).padding(10.dp, 6.dp))
+                Text("Überall abmelden", color = t.accent, modifier = Modifier.foxFocus(onClick = { vm.signOut(true) }).padding(10.dp, 6.dp))
+            }
+        } else {
+            Text("Optional: Mit dem FOX-Konto werden Design und Einstellungen geräteübergreifend gespeichert. Deine IPTV-Playlists und Favoriten bleiben auf dem Gerät.", color = t.muted, fontSize = 13.sp)
+            Text("Über FOX Store anmelden", color = t.accent, fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 6.dp).foxFocus(onClick = { vm.signInViaStore() }).padding(12.dp, 8.dp))
+            var user by remember { mutableStateOf("") }
+            var pass by remember { mutableStateOf("") }
+            Text("oder mit Benutzername und Passwort:", color = t.muted, fontSize = 13.sp)
+            OutlinedTextField(user, { user = it }, label = { Text("Benutzername / E-Mail") }, singleLine = true, modifier = Modifier.fillMaxWidth().widthIn(max = 640.dp))
+            OutlinedTextField(pass, { pass = it }, label = { Text("Passwort") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().widthIn(max = 640.dp))
+            Text("Anmelden", color = if (user.isNotBlank() && pass.isNotBlank()) t.accent else t.muted,
+                modifier = Modifier.padding(top = 6.dp).foxFocus(onClick = { if (user.isNotBlank() && pass.isNotBlank()) { vm.signIn(user.trim(), pass); pass = "" } }).padding(12.dp, 8.dp))
+        }
     }
 }
