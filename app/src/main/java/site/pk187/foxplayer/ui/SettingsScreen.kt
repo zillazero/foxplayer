@@ -78,6 +78,8 @@ fun SettingsScreen(vm: MainViewModel, onBack: (() -> Unit)?) {
             }
         }
 
+        PerfSection(vm)
+
         Section("Über") {
             Text("FOX-Player ${BuildConfig.VERSION_NAME} · Lizenz: GNU GPL v3.0", color = t.text)
             Text("Enthält Ideen und Teile aus M3UAndroid (github.com/oxyroid/M3UAndroid, GPL-3.0). " +
@@ -133,4 +135,43 @@ private fun AddPlaylist(vm: MainViewModel) {
                 name = ""; url = ""; user = ""; pass = ""; epg = ""
             }
         }).padding(12.dp, 8.dp))
+}
+
+@Composable
+private fun PerfSection(vm: MainViewModel) {
+    val t = LocalFox.current
+    val p by vm.perf.collectAsState()
+    Section("Wiedergabe & Performance") {
+        Choice("Decoder", p.decoder, listOf("auto" to "Hardware (Standard)", "sw" to "Software bevorzugen", "ffmpeg" to "FFmpeg-Audio bevorzugen")) { vm.savePerf(p.copy(decoder = it)) }
+        Choice("Puffer", p.buffer, listOf("klein" to "Klein · schnelles Umschalten", "mittel" to "Mittel", "gross" to "Groß · stabil bei schwachem Netz")) { vm.savePerf(p.copy(buffer = it)) }
+        Choice("Bildrate anpassen", p.frameRateMatch, listOf("aus" to "Aus", "nahtlos" to "Nur nahtlos", "immer" to "Immer (inkl. Auflösung, im Vollbild)")) { vm.savePerf(p.copy(frameRateMatch = it)) }
+        Toggle("Nächsten/vorherigen Kanal vorladen", p.preloadNext) { vm.savePerf(p.copy(preloadNext = it)) }
+        Toggle("Tunneled Playback (geringere Last, nur wenn das Gerät es kann)", p.tunneling) { vm.savePerf(p.copy(tunneling = it)) }
+        Toggle("Audio-Passthrough (AC3/E-AC3/DTS/Atmos an AV-Receiver/TV)", p.passthrough) { vm.savePerf(p.copy(passthrough = it)) }
+        Toggle("Animationen", p.animations) { vm.savePerf(p.copy(animations = it)) }
+        Toggle("Statistik-Overlay (FPS, Bitrate, Codec, gedroppte Frames)", p.stats) { vm.savePerf(p.copy(stats = it)) }
+        Text("Deinterlacing: automatisch durch den Hardware-Decoder des Geräts (Media3 bietet dafür keine eigene Einstellung).", color = t.muted, fontSize = 12.sp)
+        Text("HDR10, HLG und Dolby Vision werden genutzt, wenn Gerät und Fernseher sie unterstützen; sonst Rückfall auf SDR/HEVC.", color = t.muted, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun Choice(label: String, value: String, options: List<Pair<String, String>>, onSelect: (String) -> Unit) {
+    val t = LocalFox.current
+    Text(label, color = t.text, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        options.forEach { (k, l) ->
+            Text(l, color = if (k == value) t.accent else t.text, fontSize = 14.sp,
+                modifier = Modifier.foxFocus(k == value, { onSelect(k) }).padding(10.dp, 6.dp))
+        }
+    }
+}
+
+@Composable
+private fun Toggle(label: String, value: Boolean, onChange: (Boolean) -> Unit) {
+    val t = LocalFox.current
+    Row(Modifier.fillMaxWidth().foxFocus(onClick = { onChange(!value) }).padding(10.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = t.text, modifier = Modifier.weight(1f))
+        Text(if (value) "AN" else "AUS", color = if (value) t.accent else t.muted, fontWeight = FontWeight.Bold)
+    }
 }

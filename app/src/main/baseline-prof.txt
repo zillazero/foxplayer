@@ -1,0 +1,4 @@
+# Handgeschriebenes Baseline Profile (AOT-Kompilierung der Startpfade und des EPG-Rasters).
+# Compose, Media3, Room und Paging bringen eigene Profile mit; dies deckt den App-Code ab.
+HSPLsite/pk187/foxplayer/**->**(**)**
+Lsite/pk187/foxplayer/**;

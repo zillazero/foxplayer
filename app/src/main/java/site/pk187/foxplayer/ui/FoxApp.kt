@@ -53,12 +53,17 @@ fun FoxApp(vm: MainViewModel) {
     val playlists by vm.playlists.collectAsState()
     val fullscreen by vm.fullscreen.collectAsState()
     val t = LocalFox.current
+    val anim = vm.perf.collectAsState().value.animations
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.foundation.LocalOverscrollFactory provides (if (anim) androidx.compose.foundation.LocalOverscrollFactory.current else null),
+    ) {
     Box(Modifier.fillMaxSize().background(t.bg)) {
         when {
             fullscreen -> FullscreenPlayer(vm)
             screen == Screen.SETTINGS || playlists.isEmpty() -> SettingsScreen(vm, onBack = if (playlists.isEmpty()) null else ({ screen = Screen.HOME }))
             else -> HomeScreen(vm, onSettings = { screen = Screen.SETTINGS })
         }
+    }
     }
 }
 
@@ -124,12 +129,14 @@ fun Preview(vm: MainViewModel, modifier: Modifier) {
         PlayerSurface(vm, AspectRatioFrameLayout.RESIZE_MODE_FIT)
         val playing by vm.playing.collectAsState()
         if (playing == null) Text("Kanal wählen", color = t.muted, modifier = Modifier.align(Alignment.Center))
+        StatsOverlay(vm, Modifier.align(Alignment.TopStart), compact = true)
     }
 }
 
 @OptIn(UnstableApi::class)
 @Composable
 fun PlayerSurface(vm: MainViewModel, resize: Int) {
+    val fp by vm.playerFlow.collectAsState()
     AndroidView(
         factory = { ctx ->
             PlayerView(ctx).apply {
@@ -140,7 +147,7 @@ fun PlayerSurface(vm: MainViewModel, resize: Int) {
                 setShutterBackgroundColor(android.graphics.Color.BLACK)
             }
         },
-        update = { it.player = vm.player.exo; it.resizeMode = resize },
+        update = { it.player = fp.exo; it.resizeMode = resize },
         onRelease = { it.player = null },
         modifier = Modifier.fillMaxSize(),
     )
@@ -165,7 +172,8 @@ private fun InfoPanel(vm: MainViewModel, modifier: Modifier, onSettings: () -> U
             Text("FOX", color = t.accent, fontWeight = FontWeight.Black, fontSize = 20.sp)
             Text("-PLAYER", color = t.text, fontWeight = FontWeight.Bold, fontSize = 20.sp)
             Spacer(Modifier.weight(1f))
-            if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = t.accent, strokeWidth = 2.dp)
+            val anim = vm.perf.collectAsState().value.animations
+            if (busy) { if (anim) CircularProgressIndicator(Modifier.size(18.dp), color = t.accent, strokeWidth = 2.dp) else Text("lädt …", color = t.muted, fontSize = 12.sp) }
             Spacer(Modifier.width(8.dp))
             Text("⚙ Einstellungen", color = t.text, modifier = Modifier.foxFocus(onClick = onSettings).padding(8.dp, 4.dp))
         }
@@ -249,6 +257,7 @@ private fun EpgGrid(vm: MainViewModel, modifier: Modifier, channelWidth: android
     var nowTick by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(30_000); nowTick = System.currentTimeMillis() } }
     val firstFocus = remember { FocusRequester() }
+    val shift: (Long) -> Unit = remember { { d -> windowStart = (windowStart + d).coerceAtLeast(roundHalfHour(System.currentTimeMillis()) - 7 * 86400_000L) } }
 
     Column(modifier.clip(RoundedCornerShape(10.dp)).background(t.panel)) {
         // Zeitleiste
@@ -273,7 +282,7 @@ private fun EpgGrid(vm: MainViewModel, modifier: Modifier, channelWidth: android
                 if (ch == null) Box(Modifier.fillMaxWidth().height(52.dp))
                 else EpgRow(
                     vm, ch, playing?.id == ch.id, channelWidth, windowStart, windowEnd, nowTick,
-                    shift = { d -> windowStart = (windowStart + d).coerceAtLeast(roundHalfHour(System.currentTimeMillis()) - 7 * 86400_000L) },
+                    shift = shift,
                     modifier = if (idx == 0) Modifier.focusRequester(firstFocus) else Modifier,
                 )
             }
@@ -309,40 +318,78 @@ private fun EpgRow(
             Text((if (ch.favorite) "★ " else "") + ch.name, color = if (isPlaying) t.accent else t.text, fontSize = 14.sp,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         }
-        BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
-            val w = maxWidth
-            val span = (to - from).toFloat()
+        Box(Modifier.weight(1f).fillMaxHeight()) {
             if (progs.isEmpty()) {
                 Box(Modifier.fillMaxSize().padding(2.dp).foxFocus(onClick = { vm.play(ch) }, onFocus = { vm.focused.value = ch }).background(t.bg2.copy(alpha = .6f)).padding(8.dp, 0.dp), contentAlignment = Alignment.CenterStart) {
                     Text("Kein Programm", color = t.muted, fontSize = 12.sp)
                 }
-            }
-            progs.forEachIndexed { i, p ->
-                val s = maxOf(p.start, from); val e = minOf(p.stop, to)
-                if (e <= s) return@forEachIndexed
-                val live = p.start <= now && p.stop > now
-                val past = p.stop <= now
-                Box(
-                    Modifier.offset(x = w * ((s - from) / span)).width(w * ((e - s) / span)).fillMaxHeight().padding(2.dp)
-                        .onPreviewKeyEvent { ev ->
-                            if (ev.type != KeyEventType.KeyDown) false
-                            else if (ev.key == Key.DirectionRight && (i == progs.lastIndex || progs[i + 1].start >= to)) { shift(3600_000L); true }
-                            else if (ev.key == Key.DirectionLeft && p.start < from) { shift(-3600_000L); true }
-                            else false
-                        }
-                        .background(if (live) t.accent.copy(alpha = .14f) else t.bg2, RoundedCornerShape(6.dp))
-                        .foxFocus(onClick = { vm.playProgramme(ch, p) }, onFocus = { vm.focused.value = ch }, shape = RoundedCornerShape(6.dp))
-                        .padding(horizontal = 8.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    Column {
-                        Text(p.title, color = if (past) t.muted else t.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(fmt(p.start) + (if (past && ch.catchupDays > 0) "  ⟲" else ""), color = t.muted, fontSize = 11.sp, maxLines = 1)
-                    }
+            } else Row(Modifier.fillMaxSize()) {
+                // Gewichtete Zeitleiste: Luecken = Spacer, Sendungen = Box; kein Messen pro Zeile noetig.
+                var cursor = from
+                progs.forEachIndexed { i, p ->
+                    val s0 = maxOf(p.start, from, cursor); val e = minOf(p.stop, to)
+                    if (e <= s0) return@forEachIndexed
+                    if (s0 > cursor) Spacer(Modifier.weight((s0 - cursor).toFloat()))
+                    cursor = e
+                    key(p.id) { ProgrammeCell(vm, ch, p, i == progs.lastIndex || progs[i + 1].start >= to, p.start < from, now, shift, Modifier.weight((e - s0).toFloat())) }
                 }
+                if (cursor < to) Spacer(Modifier.weight((to - cursor).toFloat()))
             }
-            if (now in from until to) Box(Modifier.offset(x = w * ((now - from) / span)).width(2.dp).fillMaxHeight().background(t.accent))
+            if (now in from until to) Row(Modifier.fillMaxSize()) {
+                Spacer(Modifier.weight((now - from).toFloat().coerceAtLeast(1f)))
+                Box(Modifier.width(2.dp).fillMaxHeight().background(t.accent))
+                Spacer(Modifier.weight((to - now).toFloat().coerceAtLeast(1f)))
+            }
         }
+    }
+}
+
+@Composable
+private fun ProgrammeCell(vm: MainViewModel, ch: Channel, p: Programme, lastInWindow: Boolean, cutLeft: Boolean, now: Long, shift: (Long) -> Unit, modifier: Modifier) {
+    val t = LocalFox.current
+    val live = p.start <= now && p.stop > now
+    val past = p.stop <= now
+    Box(
+        modifier.fillMaxHeight().padding(2.dp)
+            .onPreviewKeyEvent { ev ->
+                if (ev.type != KeyEventType.KeyDown) false
+                else if (ev.key == Key.DirectionRight && lastInWindow) { shift(3600_000L); true }
+                else if (ev.key == Key.DirectionLeft && cutLeft) { shift(-3600_000L); true }
+                else false
+            }
+            .background(if (live) t.accent.copy(alpha = .14f) else t.bg2, RoundedCornerShape(6.dp))
+            .foxFocus(onClick = { vm.playProgramme(ch, p) }, onFocus = { vm.focused.value = ch }, shape = RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Column {
+            Text(p.title, color = if (past) t.muted else t.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(fmt(p.start) + (if (past && ch.catchupDays > 0) "  ⟲" else ""), color = t.muted, fontSize = 11.sp, maxLines = 1)
+        }
+    }
+}
+
+/** Statistik-Overlay: Video/Audio-Codec, HDR, Decoder, Bitrate, Video-FPS, gedroppte Frames, UI-FPS. */
+@Composable
+fun StatsOverlay(vm: MainViewModel, modifier: Modifier, compact: Boolean) {
+    val perf by vm.perf.collectAsState()
+    if (!perf.stats) return
+    val fp by vm.playerFlow.collectAsState()
+    val st by fp.stats.collectAsState()
+    val ui by vm.uiFps.collectAsState()
+    val jank by vm.uiJankPct.collectAsState()
+    val lines = buildList {
+        add("${st.resolution} ${"%.3f".format(st.frameRate)} fps · ${st.hdr} · ${st.videoCodec}")
+        add("Video: ${"%.1f".format(st.renderedFps)} fps · gedroppt ${st.dropped} · ${st.bitrateKbps} kbit/s")
+        if (!compact) {
+            add("Decoder: ${st.videoDecoder}")
+            add("Audio: ${st.audioCodec} · ${st.audioDecoder}")
+            add("Tunneling: ${if (st.tunneled) "an" else "aus"}")
+        }
+        add("UI: ${"%.0f".format(ui)} fps · Jank ${"%.1f".format(jank)} %")
+    }
+    Column(modifier.background(Color.Black.copy(alpha = .65f), RoundedCornerShape(6.dp)).padding(8.dp, 4.dp)) {
+        lines.forEach { Text(it, color = Color(0xFF7CF2AE), fontSize = if (compact) 10.sp else 13.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) }
     }
 }
 
@@ -378,6 +425,7 @@ private fun FullscreenPlayer(vm: MainViewModel) {
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { osd = !osd },
     ) {
         PlayerSurface(vm, AspectRatioFrameLayout.RESIZE_MODE_FIT)
+        StatsOverlay(vm, Modifier.align(Alignment.TopEnd).padding(16.dp), compact = false)
         if (osd && playing != null) {
             Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().background(t.bg.copy(alpha = .85f)).padding(24.dp, 14.dp)) {
                 Text(playing!!.name, color = t.text, fontSize = 24.sp, fontWeight = FontWeight.Bold)

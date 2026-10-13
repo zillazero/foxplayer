@@ -23,7 +23,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val dao = db.dao()
     val prefs = Prefs(app)
     private val importer = Importer(db)
-    val player = FoxPlayer(app)
+    val perfStore = PerfStore(app)
+    val perf = perfStore.flow.stateIn(viewModelScope, SharingStarted.Eagerly, PerfSettings())
+    /** Aktueller Player; wird bei geaenderten Player-Optionen neu gebaut. */
+    val playerFlow = MutableStateFlow(FoxPlayer(app, PerfSettings()))
+    val player get() = playerFlow.value
+    /** UI-Bildrate (JankStats) fuer das Statistik-Overlay. */
+    val uiFps = MutableStateFlow(0f)
+    val uiJankPct = MutableStateFlow(0f)
 
     val theme = prefs.theme.stateIn(viewModelScope, SharingStarted.Eagerly, "foxhole")
     val playlists = dao.playlists().stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -64,13 +71,33 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val last = prefs.lastChannel.first()
             if (last != 0L) dao.channel(last)?.let { play(it) }
         }
-        player.exo.addListener(object : androidx.media3.common.Player.Listener {
-            override fun onRenderedFirstFrame() { lastZapMs.value = System.currentTimeMillis() - player.zapStartedAt }
+        attach(player)
+        viewModelScope.launch {
+            perf.map { it.playerKey() }.distinctUntilChanged().drop(1).collect { rebuildPlayer() }
+        }
+        // Erste echte Einstellungen laden, bevor zum ersten Mal abgespielt wird.
+        viewModelScope.launch { val first = perfStore.flow.first(); if (first.playerKey() != PerfSettings().playerKey()) rebuildPlayer(first) }
+    }
+
+    private fun attach(p: FoxPlayer) {
+        p.exo.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onRenderedFirstFrame() { lastZapMs.value = System.currentTimeMillis() - p.zapStartedAt }
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 status.value = "Wiedergabefehler: ${error.errorCodeName}"
             }
         })
     }
+
+    private fun rebuildPlayer(s: PerfSettings = perf.value) {
+        val old = playerFlow.value
+        val np = FoxPlayer(getApplication(), s)
+        attach(np)
+        playerFlow.value = np
+        old.release()
+        playing.value?.let { play(it) }
+    }
+
+    fun savePerf(s: PerfSettings) = viewModelScope.launch { perfStore.save(s) }
 
     fun selectPlaylist(id: Long) = viewModelScope.launch { prefs.setPlaylist(id); group.value = GROUP_ALL; epgCache.clear() }
     fun setTheme(k: String) = viewModelScope.launch { prefs.setTheme(k) }
@@ -80,18 +107,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         status.value = null
         player.play(ch, url)
         playing.value = ch
-        viewModelScope.launch { prefs.setLastChannel(ch.id) }
+        viewModelScope.launch {
+            prefs.setLastChannel(ch.id)
+            val (grp, fav) = zapScope()
+            player.preloadNeighbours(dao.prev(ch.playlistId, grp, fav, ch.sort), dao.next(ch.playlistId, grp, fav, ch.sort))
+        }
     }
 
     fun zap(dir: Int) = viewModelScope.launch {
         val cur = playing.value ?: return@launch
-        val g = group.value
-        val grp = if (g == GROUP_ALL || g == GROUP_FAV) null else g
-        val n = if (dir > 0) dao.next(cur.playlistId, grp, g == GROUP_FAV, cur.sort) else dao.prev(cur.playlistId, grp, g == GROUP_FAV, cur.sort)
+        val (grp, fav) = zapScope()
+        val n = if (dir > 0) dao.next(cur.playlistId, grp, fav, cur.sort) else dao.prev(cur.playlistId, grp, fav, cur.sort)
         n?.let { play(it) }
     }
 
-    fun toggleFavorite(ch: Channel) = viewModelScope.launch { dao.toggleFavorite(ch.id) }
+    private fun zapScope(): Pair<String?, Boolean> {
+        val g = group.value
+        return (if (g == GROUP_ALL || g == GROUP_FAV) null else g) to (g == GROUP_FAV)
+    }
+
+    fun toggleFavorite(ch: Channel) = viewModelScope.launch {
+        dao.toggleFavorite(ch.id)
+        if (playing.value?.id == ch.id) playing.value = dao.channel(ch.id)
+    }
 
     fun playProgramme(ch: Channel, p: Programme) = viewModelScope.launch {
         val now = System.currentTimeMillis()
@@ -137,5 +175,5 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         } finally { busy.value = false }
     }
 
-    override fun onCleared() { player.release() }
+    override fun onCleared() { playerFlow.value.release() }
 }

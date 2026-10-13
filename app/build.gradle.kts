@@ -16,8 +16,18 @@ android {
         applicationId = "site.pk187.foxplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+        // API-Schluessel nur aus lokaler Datei (nicht im Repo). Fehlen sie, blendet die App die Funktion aus.
+        val keys = Properties().apply {
+            val f = file(System.getenv("FOX_API_KEYS") ?: "/workspace/fox-apps/foxplayer-keys.properties")
+            if (f.exists()) f.inputStream().use { load(it) }
+        }
+        fun key(n: String) = "\"" + (keys.getProperty(n) ?: "").replace("\"", "") + "\""
+        buildConfigField("String", "TRAKT_CLIENT_ID", key("TRAKT_CLIENT_ID"))
+        buildConfigField("String", "TRAKT_CLIENT_SECRET", key("TRAKT_CLIENT_SECRET"))
+        buildConfigField("String", "SIMKL_CLIENT_ID", key("SIMKL_CLIENT_ID"))
+        buildConfigField("String", "TMDB_API_KEY", key("TMDB_API_KEY"))
     }
 
     val foxKeyProps = Properties().apply {
@@ -64,6 +74,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.metrics:metrics-performance:1.0.0")
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("androidx.datastore:datastore-preferences:1.2.1")
     implementation("androidx.media3:media3-exoplayer:$media3")
     implementation("androidx.media3:media3-exoplayer-hls:$media3")
