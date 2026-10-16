@@ -16,8 +16,10 @@ android {
         applicationId = "site.pk187.foxplayer"
         minSdk = 23
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.3.1"
+        // Nur ARM: alle Android-TV-/Fire-TV-Geraete und Handys; x86-Libs waren nur Emulator-Ballast.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         // API-Schluessel nur aus lokaler Datei (nicht im Repo). Fehlen sie, blendet die App die Funktion aus.
         val keys = Properties().apply {
             val f = file(System.getenv("FOX_API_KEYS") ?: "/workspace/fox-apps/foxplayer-keys.properties")
